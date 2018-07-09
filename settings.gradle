@@ -32,8 +32,8 @@ include 'org.jvoicexml', \
     'org.jvoicexml.implementation.jsapi10', \
     'org.jvoicexml.implementation.jsapi20', \
     'org.jvoicexml.implementation.jtapi', \
-    'org.jvoicexml.implementation.kinect', \
-    'org.jvoicexml.implementation.lightweightbml', \
+//    'org.jvoicexml.implementation.kinect', \
+//    'org.jvoicexml.implementation.lightweightbml', \
     'org.jvoicexml.implementation.marc', \
     'org.jvoicexml.implementation.mary', \
     'org.jvoicexml.implementation.mrcpv2', \
@@ -47,7 +47,7 @@ include 'org.jvoicexml', \
     'org.jvoicexml.callmanager.text', \
     'org.jvoicexml.systemtest', \
     'org.jvoicexml.systemtest.servlet', \
-    'org.jvoicexml.talkinghead', \
+//    'org.jvoicexml.talkinghead', \
     'org.jvoicexml.voicexmlunit', \
     'org.jvoicexml.voicexmlunit.demo', \
     'org.jvoicexml.xml', \

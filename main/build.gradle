@@ -122,10 +122,10 @@ dependencies {
 
     jvxmlImplementationJTAPI project(':org.jvoicexml.implementation.jtapi')
 
-    jvxmlImplementationKinect project(':org.jvoicexml.implementation.kinect')
+//    jvxmlImplementationKinect project(':org.jvoicexml.implementation.kinect')
 
-    jvxmlImplementationLightweightBML project(':org.jvoicexml.implementation.lightweightbml')
-    jvxmlImplementationLightweightBML project(':org.jvoicexml.talkinghead')
+//    jvxmlImplementationLightweightBML project(':org.jvoicexml.implementation.lightweightbml')
+//    jvxmlImplementationLightweightBML project(':org.jvoicexml.talkinghead')
 
     jvxmlImplementationMarc project(':org.jvoicexml.implementation.marc')
 
