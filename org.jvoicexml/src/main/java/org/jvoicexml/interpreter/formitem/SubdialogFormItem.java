@@ -78,7 +78,7 @@ public final class SubdialogFormItem extends AbstractInputItem {
      *         subdialog.
      * @since 0.7.4
      */
-    private Subdialog getSubdialog() {
+    public Subdialog getSubdialog() {
         final VoiceXmlNode node = getNode();
         if (node == null) {
             return null;

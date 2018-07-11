@@ -21,51 +21,19 @@
 
 package org.jvoicexml.interpreter;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.util.Collection;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.jvoicexml.Application;
-import org.jvoicexml.CallControl;
-import org.jvoicexml.CallControlProperties;
-import org.jvoicexml.Configuration;
-import org.jvoicexml.ConfigurationException;
-import org.jvoicexml.DocumentDescriptor;
-import org.jvoicexml.DocumentServer;
-import org.jvoicexml.DtmfRecognizerProperties;
-import org.jvoicexml.GrammarDocument;
-import org.jvoicexml.ImplementationPlatform;
-import org.jvoicexml.Session;
-import org.jvoicexml.SpeechRecognizerProperties;
-import org.jvoicexml.UserInput;
+import org.jvoicexml.*;
 import org.jvoicexml.event.EventBus;
 import org.jvoicexml.event.JVoiceXMLEvent;
-import org.jvoicexml.event.error.BadFetchError;
-import org.jvoicexml.event.error.NoresourceError;
-import org.jvoicexml.event.error.SemanticError;
-import org.jvoicexml.event.error.UnsupportedFormatError;
-import org.jvoicexml.event.error.UnsupportedLanguageError;
+import org.jvoicexml.event.error.*;
 import org.jvoicexml.event.plain.ConnectionDisconnectHangupEvent;
 import org.jvoicexml.event.plain.implementation.RecordingStartedEvent;
 import org.jvoicexml.event.plain.jvxml.GotoNextFormEvent;
 import org.jvoicexml.event.plain.jvxml.GotoNextFormItemEvent;
 import org.jvoicexml.event.plain.jvxml.InternalExitEvent;
 import org.jvoicexml.interpreter.datamodel.DataModel;
-import org.jvoicexml.interpreter.formitem.BlockFormItem;
-import org.jvoicexml.interpreter.formitem.FieldFormItem;
-import org.jvoicexml.interpreter.formitem.InitialFormItem;
-import org.jvoicexml.interpreter.formitem.ObjectFormItem;
-import org.jvoicexml.interpreter.formitem.OptionConverter;
-import org.jvoicexml.interpreter.formitem.RecordFormItem;
-import org.jvoicexml.interpreter.formitem.SubdialogFormItem;
-import org.jvoicexml.interpreter.formitem.TransferFormItem;
+import org.jvoicexml.interpreter.formitem.*;
 import org.jvoicexml.interpreter.scope.Scope;
 import org.jvoicexml.interpreter.scope.ScopeObserver;
 import org.jvoicexml.profile.Profile;
@@ -79,6 +47,12 @@ import org.jvoicexml.xml.srgs.Grammar;
 import org.jvoicexml.xml.srgs.ModeType;
 import org.jvoicexml.xml.vxml.Prompt;
 import org.jvoicexml.xml.vxml.VoiceXmlDocument;
+
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.*;
 
 /**
  * Forms are interpreted by an implicit form interpretation algorithm (FIA). The
@@ -107,92 +81,108 @@ import org.jvoicexml.xml.vxml.VoiceXmlDocument;
  * to select.
  * </p>
  *
+ * @author Dirk Schnelle-Walka
  * @see org.jvoicexml.xml.vxml.Form
  * @see org.jvoicexml.interpreter.Dialog
  * @see org.jvoicexml.interpreter.VoiceXmlInterpreter
- *
- * @author Dirk Schnelle-Walka
  */
 public final class FormInterpretationAlgorithm implements FormItemVisitor {
-    /** Logger for this class. */
+    /**
+     * Logger for this class.
+     */
     private static final Logger LOGGER = LogManager
             .getLogger(FormInterpretationAlgorithm.class);
 
-    /** The default prompt timeout in msec. */
+    /**
+     * The default prompt timeout in msec.
+     */
     private static final int DEFAULT_PROMPT_TIMEOUT = 30000;
 
-    /** The default recording maxtime. */
+    /**
+     * The default recording maxtime.
+     */
     private static final int DEFAULT_RECORDING_MAXTIME = 30000;
 
-    /** The dialog to be processed by this FIA. */
+    /**
+     * The dialog to be processed by this FIA.
+     */
     private final Dialog dialog;
 
-    /** The id of the dialog. */
+    /**
+     * The id of the dialog.
+     */
     private final String id;
 
-    /** Form items of the current dialog. */
+    /**
+     * Form items of the current dialog.
+     */
     private final Collection<FormItem> formItems;
 
-    /** Map of form item names to form items. */
+    /**
+     * Map of form item names to form items.
+     */
     private final Map<String, FormItem> formItemMap;
-
-    /** The currently processed form item. */
-    private FormItem item;
-
-    /** The current VoiceXML interpreter context. */
+    /**
+     * The current VoiceXML interpreter context.
+     */
     private final VoiceXmlInterpreterContext context;
-
-    /** The current VoiceXML interpreter. */
+    /**
+     * The current VoiceXML interpreter.
+     */
     private final VoiceXmlInterpreter interpreter;
-
-    /** The profile to use. */
-    private Profile profile;
-
-    /** Tag strategy executor. */
-    private TagStrategyExecutor executor;
-
     /**
-     * <code>true</code> if the last loop iteration ended with a catch that had
-     * no <code>&lt;reprompt&gt;</code>.
+     * The input items that are just filled.
      */
-    private boolean reprompt;
-
-    /**
-     * <code>true</code> active dialog changed from the last loop iteration.
-     */
-    private boolean activeDialogChanged;
-
-    /** The input items that are just filled. */
     private final Set<InputItem> justFilled;
-
-    /** The strategies that were added while visiting an input item. */
-    private Collection<EventStrategy> eventStrategies;
-
     /**
      * Field local grammars that have already been processed. They have to be
      * kept separated from the usual {@link ActiveGrammarSet} set since
      * processing of form items does not enter a new scope.
      */
     private final Set<GrammarDocument> localGrammars;
-
-    /** Form item local properties. */
+    /**
+     * Form item local properties.
+     */
     private final Map<String, String> localProperties;
-
-    /** <code>true</code> if the FIA is currently queuing prompts. */
+    /**
+     * The currently processed form item.
+     */
+    private FormItem item;
+    /**
+     * The profile to use.
+     */
+    private Profile profile;
+    /**
+     * Tag strategy executor.
+     */
+    private TagStrategyExecutor executor;
+    /**
+     * <code>true</code> if the last loop iteration ended with a catch that had
+     * no <code>&lt;reprompt&gt;</code>.
+     */
+    private boolean reprompt;
+    /**
+     * <code>true</code> active dialog changed from the last loop iteration.
+     */
+    private boolean activeDialogChanged;
+    /**
+     * The strategies that were added while visiting an input item.
+     */
+    private Collection<EventStrategy> eventStrategies;
+    /**
+     * <code>true</code> if the FIA is currently queuing prompts.
+     */
     private boolean queuingPrompts;
 
     /**
      * Construct a new FIA object.
      *
-     * @param ctx
-     *            the VoiceXML interpreter context.
-     * @param ip
-     *            the VoiceXML interpreter.
-     * @param currentDialog
-     *            the dialog to be interpreted.
+     * @param ctx           the VoiceXML interpreter context.
+     * @param ip            the VoiceXML interpreter.
+     * @param currentDialog the dialog to be interpreted.
      */
     public FormInterpretationAlgorithm(final VoiceXmlInterpreterContext ctx,
-            final VoiceXmlInterpreter ip, final Dialog currentDialog) {
+                                       final VoiceXmlInterpreter ip, final Dialog currentDialog) {
         context = ctx;
         interpreter = ip;
         dialog = currentDialog;
@@ -209,7 +199,7 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
 
     /**
      * Retrieves the current dialog.
-     * 
+     *
      * @return the current dialog.
      */
     public Dialog getDialog() {
@@ -227,7 +217,7 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
 
     /**
      * Retrieves the tag strategy executor.
-     * 
+     *
      * @return the tag strategy executor.
      * @since 0.7
      */
@@ -245,11 +235,9 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
      * variable is initialized, in document order, to undefined or to the value
      * of the relevant <code>&lt;expr&gt;</code> attribute.
      * </p>
-     * 
-     * @param prof
-     *            the profile
-     * @throws JVoiceXMLEvent
-     *             Error initializing the {@link FormItem}s.
+     *
+     * @param prof the profile
+     * @throws JVoiceXMLEvent Error initializing the {@link FormItem}s.
      */
     public void initialize(final Profile prof) throws JVoiceXMLEvent {
         profile = prof;
@@ -303,13 +291,10 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
     /**
      * Initializes the given {@link FormItem}.
      *
-     * @param formItem
-     *            The item to initialize.
+     * @param formItem The item to initialize.
+     * @throws SemanticError error initializing the {@link FormItem}s.
+     * @throws BadFetchError error initializing the {@link FormItem}s.
      * @since 0.4
-     * @exception SemanticError
-     *                error initializing the {@link FormItem}s.
-     * @exception BadFetchError
-     *                error initializing the {@link FormItem}s.
      */
     private void initFormItem(final FormItem formItem) throws SemanticError,
             BadFetchError {
@@ -341,10 +326,9 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
     /**
      * Retrieves the {@link FormItem} with the given name.
      *
-     * @param name
-     *            Name of the {@link FormItem}
+     * @param name Name of the {@link FormItem}
      * @return Corresponding {@link FormItem}, <code>null</code> if it does not
-     *         exist.
+     * exist.
      * @since 0.3.1
      */
     public FormItem getFormItem(final String name) {
@@ -364,7 +348,7 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
 
     /**
      * Retrieves the currently processed {@link FormItem}.
-     * 
+     *
      * @return the current form item.
      * @since 0.7
      */
@@ -395,8 +379,7 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
      * appropriate event handler for that event type.
      * </p>
      *
-     * @exception JVoiceXMLEvent
-     *                Error or event processing the dialog.
+     * @throws JVoiceXMLEvent Error or event processing the dialog.
      */
     public void mainLoop() throws JVoiceXMLEvent {
         LOGGER.info("starting main loop for form '" + id + "'...");
@@ -457,15 +440,11 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
 
     /**
      * Deactivates the local grammars.
-     * 
-     * @throws BadFetchError
-     *             error deactivating the grammar
-     * @throws NoresourceError
-     *             error accessing the implementation platform
-     * @throws UnsupportedLanguageError
-     *             language of the grammar is not supported
-     * @throws ConnectionDisconnectHangupEvent
-     *             the user already hung up
+     *
+     * @throws BadFetchError                   error deactivating the grammar
+     * @throws NoresourceError                 error accessing the implementation platform
+     * @throws UnsupportedLanguageError        language of the grammar is not supported
+     * @throws ConnectionDisconnectHangupEvent the user already hung up
      * @since 0.7.3
      */
     private void deactivateLocalGrammars() throws UnsupportedLanguageError,
@@ -494,12 +473,10 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
     /**
      * Tries to process the given event with the help of the
      * {@link EventHandler}.
-     * 
-     * @param event
-     *            the event to process.
-     * @exception JVoiceXMLEvent
-     *                the input event if the handler was not able to process the
-     *                given event.
+     *
+     * @param event the event to process.
+     * @throws JVoiceXMLEvent the input event if the handler was not able to process the
+     *                        given event.
      * @since 0.7
      */
     void processEvent(final JVoiceXMLEvent event) throws JVoiceXMLEvent {
@@ -540,16 +517,13 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
      * will perform an implicit <code>&lt;exit&gt;</code> operation).
      * </p>
      *
-     * @param name
-     *            name of the form item to select in case of a goto, maybe
-     *            <code>null</code> in case the usual select process should be
-     *            followed
+     * @param name name of the form item to select in case of a goto, maybe
+     *             <code>null</code> in case the usual select process should be
+     *             followed
      * @return next unfilled {@link FormItem}, <code>null</code> if there is
-     *         none.
-     * @exception SemanticError
-     *                error evaluating the form item
-     * @exception BadFetchError
-     *                if the specified form item does not exist
+     * none.
+     * @throws SemanticError error evaluating the form item
+     * @throws BadFetchError if the specified form item does not exist
      */
     private FormItem select(final String name) throws SemanticError,
             BadFetchError {
@@ -585,11 +559,8 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
      * on the type of {@link FormItem}.
      * </p>
      *
-     * @param formItem
-     *            The {@link FormItem} to visit.
-     *
-     * @exception JVoiceXMLEvent
-     *                Error or event visiting the {@link FormItem}.
+     * @param formItem The {@link FormItem} to visit.
+     * @throws JVoiceXMLEvent Error or event visiting the {@link FormItem}.
      * @see #select(String)
      */
     private void collect(final FormItem formItem) throws JVoiceXMLEvent {
@@ -644,11 +615,8 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
      * phase is to process the input or event collected during the previous
      * phases
      *
-     * @param formItem
-     *            The current {@link FormItem}.
-     *
-     * @exception JVoiceXMLEvent
-     *                Error processing the event.
+     * @param formItem The current {@link FormItem}.
+     * @throws JVoiceXMLEvent Error processing the event.
      */
     private void process(final FormItem formItem) throws JVoiceXMLEvent {
         interpreter.setState(InterpreterState.TRANSITIONING);
@@ -714,11 +682,9 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
 
     /**
      * Executes local tags.
-     * 
-     * @param formItem
-     *            the current form item.
-     * @throws JVoiceXMLEvent
-     *             error executing a local tag strategy.
+     *
+     * @param formItem the current form item.
+     * @throws JVoiceXMLEvent error executing a local tag strategy.
      * @since 0.7.5
      */
     private void executeLocalTags(final FormItem formItem)
@@ -735,10 +701,8 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
 
     /**
      * Sets the <code>just_filled</code> flag for the given input item.
-     * 
-     * @param input
-     *            the input item.
      *
+     * @param input the input item.
      * @since 0.5.1
      */
     public void setJustFilled(final InputItem input) {
@@ -752,9 +716,8 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
     /**
      * Checks, if the <code>just_filled</code> flag is set for the given input
      * item.
-     * 
-     * @param input
-     *            the input item
+     *
+     * @param input the input item
      * @return <code>true</code> if the flag is set.
      * @since 0.7
      */
@@ -767,15 +730,12 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
      * <code>&lt;initial&gt;</code>. Queue the selected prompts for play prior
      * to the next collect operation.
      *
-     * @param formItem
-     *            the current {@link FormItem}.
-     * @param countable
-     *            the prompt countable.
-     * @throws JVoiceXMLEvent
-     *             Error collecting the prompts or in prompt evaluation.
+     * @param formItem  the current {@link FormItem}.
+     * @param countable the prompt countable.
+     * @throws JVoiceXMLEvent Error collecting the prompts or in prompt evaluation.
      */
     private void queuePrompts(final FormItem formItem,
-            final PromptCountable countable) throws JVoiceXMLEvent {
+                              final PromptCountable countable) throws JVoiceXMLEvent {
         if (LOGGER.isDebugEnabled()) {
             LOGGER.debug("queuing prompts...");
         }
@@ -816,7 +776,7 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
     /**
      * Checks if the FIA is currently queuing prompts. The behaviour of the
      * {@link TagStrategy}s might be different dependent on the queuing mode.
-     * 
+     *
      * @return <code>true</code> if the FIA is currently queiung prompts.
      */
     public boolean isQueuingPrompts() {
@@ -825,7 +785,7 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
 
     /**
      * Retrieves the default timeout.
-     * 
+     *
      * @return the default timeout.
      */
     private long getPromptTimeout() {
@@ -840,18 +800,13 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
     /**
      * Processes the given grammar tag and adds it to the
      * {@link ActiveGrammarSet}.
-     * 
-     * @param grammar
-     *            grammar to process.
+     *
+     * @param grammar grammar to process.
      * @return the processed grammar.
-     * @exception NoresourceError
-     *                Error accessing the input device.
-     * @exception UnsupportedFormatError
-     *                If an unsupported grammar has to be processed.
-     * @exception BadFetchError
-     *                If the document could not be fetched successfully.
-     * @exception SemanticError
-     *                if there was an error evaluating a scripting expression
+     * @throws NoresourceError        Error accessing the input device.
+     * @throws UnsupportedFormatError If an unsupported grammar has to be processed.
+     * @throws BadFetchError          If the document could not be fetched successfully.
+     * @throws SemanticError          if there was an error evaluating a scripting expression
      */
     public GrammarDocument processGrammar(final Grammar grammar)
             throws UnsupportedFormatError, NoresourceError, BadFetchError,
@@ -867,20 +822,14 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
     /**
      * Process the given grammar tags and add them to the
      * {@link GrammarContainer} if it can be cached.
-     * 
-     * @param grammarContainer
-     *            the field for which to process the grammars.
-     * @param grammars
-     *            grammars to process.
+     *
+     * @param grammarContainer the field for which to process the grammars.
+     * @param grammars         grammars to process.
      * @return processed grammars
-     * @exception NoresourceError
-     *                Error accessing the input device.
-     * @exception UnsupportedFormatError
-     *                If an unsupported grammar has to be processed.
-     * @exception BadFetchError
-     *                If the document could not be fetched successfully.
-     * @exception SemanticError
-     *                if there was an error evaluating a scripting expression
+     * @throws NoresourceError        Error accessing the input device.
+     * @throws UnsupportedFormatError If an unsupported grammar has to be processed.
+     * @throws BadFetchError          If the document could not be fetched successfully.
+     * @throws SemanticError          if there was an error evaluating a scripting expression
      */
     private Collection<GrammarDocument> processGrammars(
             final GrammarContainer grammarContainer,
@@ -927,21 +876,14 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
      * Set the active grammar set to the {@link FormItem} grammars, if any.
      * </p>
      *
-     * @param formItem
-     *            The {@link FormItem} for which the grammars should be
-     *            activated.
-     * @exception BadFetchError
-     *                Error retrieving the grammar from the given URI.
-     * @exception UnsupportedLanguageError
-     *                The specified language is not supported.
-     * @exception NoresourceError
-     *                The input resource is not available.
-     * @exception UnsupportedFormatError
-     *                Error in the grammar's format.
-     * @exception ConnectionDisconnectHangupEvent
-     *                the user hung up
-     * @exception SemanticError
-     *                if there was an error evaluating a scripting expression
+     * @param formItem The {@link FormItem} for which the grammars should be
+     *                 activated.
+     * @throws BadFetchError                   Error retrieving the grammar from the given URI.
+     * @throws UnsupportedLanguageError        The specified language is not supported.
+     * @throws NoresourceError                 The input resource is not available.
+     * @throws UnsupportedFormatError          Error in the grammar's format.
+     * @throws ConnectionDisconnectHangupEvent the user hung up
+     * @throws SemanticError                   if there was an error evaluating a scripting expression
      */
     private void activateModalGrammars(final FormItem formItem)
             throws BadFetchError, ConnectionDisconnectHangupEvent,
@@ -1000,21 +942,14 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
      * Set the active grammar set to the {@link FormItem} grammars, if any.
      * </p>
      *
-     * @param formItem
-     *            The {@link FormItem} for which the grammars should be
-     *            activated.
-     * @exception BadFetchError
-     *                Error retrieving the grammar from the given URI.
-     * @exception UnsupportedLanguageError
-     *                The specified language is not supported.
-     * @exception NoresourceError
-     *                The input resource is not available.
-     * @exception UnsupportedFormatError
-     *                Error in the grammar's format.
-     * @exception ConnectionDisconnectHangupEvent
-     *                the user hung up
-     * @exception SemanticError
-     *                if there are no grammars to activate
+     * @param formItem The {@link FormItem} for which the grammars should be
+     *                 activated.
+     * @throws BadFetchError                   Error retrieving the grammar from the given URI.
+     * @throws UnsupportedLanguageError        The specified language is not supported.
+     * @throws NoresourceError                 The input resource is not available.
+     * @throws UnsupportedFormatError          Error in the grammar's format.
+     * @throws ConnectionDisconnectHangupEvent the user hung up
+     * @throws SemanticError                   if there are no grammars to activate
      */
     private void activateGrammars(final FormItem formItem)
             throws BadFetchError, ConnectionDisconnectHangupEvent,
@@ -1062,19 +997,13 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
 
     /**
      * Activates the given grammars.
-     * 
-     * @param grammarsToActivate
-     *            the grammars to activate
-     * @throws BadFetchError
-     *             error activating the grammar
-     * @throws NoresourceError
-     *             error accessing the implementation platform
-     * @throws UnsupportedLanguageError
-     *             language of the grammar is not supported
-     * @throws ConnectionDisconnectHangupEvent
-     *             the user already hung up
-     * @throws UnsupportedFormatError
-     *             if the requested grammar type is not supported
+     *
+     * @param grammarsToActivate the grammars to activate
+     * @throws BadFetchError                   error activating the grammar
+     * @throws NoresourceError                 error accessing the implementation platform
+     * @throws UnsupportedLanguageError        language of the grammar is not supported
+     * @throws ConnectionDisconnectHangupEvent the user already hung up
+     * @throws UnsupportedFormatError          if the requested grammar type is not supported
      * @since 0.7.3
      */
     private void activateGrammars(
@@ -1104,17 +1033,12 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
 
     /**
      * Deactivates the given grammars.
-     * 
-     * @param grammarsToDeactivate
-     *            the grammars to activate
-     * @throws BadFetchError
-     *             error deactivating the grammar
-     * @throws NoresourceError
-     *             error accessing the implementation platform
-     * @throws UnsupportedLanguageError
-     *             language of the grammar is not supported
-     * @throws ConnectionDisconnectHangupEvent
-     *             the user already hung up
+     *
+     * @param grammarsToDeactivate the grammars to activate
+     * @throws BadFetchError                   error deactivating the grammar
+     * @throws NoresourceError                 error accessing the implementation platform
+     * @throws UnsupportedLanguageError        language of the grammar is not supported
+     * @throws ConnectionDisconnectHangupEvent the user already hung up
      * @since 0.7.3
      */
     private void deactivateGrammars(
@@ -1142,7 +1066,7 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
 
     /**
      * {@inheritDoc}
-     *
+     * <p>
      * A <code>&lt;block&gt;</code> element is visited by setting its dialog
      * item variable to <code>true</code>, evaluating its content, and then
      * bypassing the process phase.
@@ -1169,7 +1093,7 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
 
     /**
      * {@inheritDoc}
-     *
+     * <p>
      * If a <code>&lt;field&gt;</code> is visited, the FIA selects and queues up
      * any prompts based on the item's prompt counter and prompt conditions.
      * Then it activates and listens for the field level grammar(s) and any
@@ -1356,13 +1280,39 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
         eventStrategies = handler
                 .collect(context, interpreter, this, subdialog);
 
-        final URI uri;
+        URI uri;
         try {
             uri = subdialog.getSubdialigUri();
         } catch (URISyntaxException e) {
             throw new BadFetchError(e.getMessage(), e);
         }
+        final DataModel model = context.getDataModel();
 
+        String url = uri.toString();
+        if (subdialog.getSubdialog() != null) {
+            String sep = "?";
+            if (null != subdialog.getSubdialog().getNamelist()) {
+                ArrayList<String> seen = new ArrayList<>();
+                String[] namelist = subdialog.getSubdialog().getNamelist().split(" ");
+                for (String name : namelist) {
+                    if (name.isEmpty()) continue;
+                    String value = model.readVariable(name, String.class);
+                    if (null != value && !seen.contains(name)) {
+                        seen.add(name);
+                        url = url + sep + name + "=" + value;
+                        sep = "&";
+                    }
+                }
+            }
+
+        }
+        URI newUri;
+        try {
+            newUri = new URI(url);
+        } catch (URISyntaxException e) {
+            throw new BadFetchError(e.getMessage(), e);
+        }
+        uri = newUri;
         // Determine the URI of the subdialog to call
         final Application application = context.getApplication();
         final URI resolvedUri = application.resolve(uri);
@@ -1375,7 +1325,6 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
         final DocumentDescriptor descriptor = new DocumentDescriptor(uri);
         final VoiceXmlDocument doc = context.loadDocument(descriptor);
         application.addDocument(resolvedUri, doc);
-        final DataModel model = context.getDataModel();
         final DocumentServer documentServer = context.getDocumentServer();
         // Retrieve the nested param elements
         final ParamParser parser = new ParamParser(subdialog.getNode(), model,
@@ -1431,8 +1380,7 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
      * Set if the last loop iteration ended with a <code>&lt;catch&gt;</code>
      * that had no <code>&lt;reprompt&gt;</code>.
      *
-     * @param on
-     *            <code>true</code> if a catch occurred that had no reprompt.
+     * @param on <code>true</code> if a catch occurred that had no reprompt.
      */
     public void setReprompt(final boolean on) {
         reprompt = on;
@@ -1440,9 +1388,8 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
 
     /**
      * Retrieves the value of the given property.
-     * 
-     * @param name
-     *            Name of the property.
+     *
+     * @param name Name of the property.
      * @return Value of the property.
      * @since 0.7.5
      */
@@ -1452,11 +1399,9 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
 
     /**
      * Sets the property with the given name to the given value.
-     * 
-     * @param name
-     *            Name of the property.
-     * @param value
-     *            Value of the property.
+     *
+     * @param name  Name of the property.
+     * @param value Value of the property.
      * @since 0.7.5
      */
     public void setLocalProperty(final String name, final String value) {
@@ -1465,7 +1410,7 @@ public final class FormInterpretationAlgorithm implements FormItemVisitor {
 
     /**
      * Retrieves the form item local properties.
-     * 
+     *
      * @return the form item local properties.
      * @since 0.7.5
      */
